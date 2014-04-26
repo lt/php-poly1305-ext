@@ -1,11 +1,23 @@
-Curve25519 PHP extension
+Poly1305 PHP extension
 ========================
 
 This extension is a thin wrapper around [Andrew Moon's poly1305-donna](https://github.com/floodyberry/poly1305-donna) implementation
 
 ### Usage:
 
-TODO
+Generate an authenticator using a 32 byte unique key
+
+```
+$authenticator = poly1305_authenticate($key, $message);
+```
+
+Verify the authenticity using the authenticator for that key
+
+```
+$valid = poly1305_verify($authenticator, $key, $message);
+```
+
+Remember that *a key must not be used more than once*
 
 ### How to install:
 
