@@ -45,9 +45,8 @@ $k = '0123456789012345';
 $r = '0123456789012345';
 $n = '0123456789012345';
 
-$aeskn = openssl_encrypt($n, 'aes128', $k,
-    OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
-    "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+$aeskn = openssl_encrypt($n, 'aes-128-ecb', $k,
+    OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING);
 
 $authenticator = poly1305_authenticate($r . $aeskn, $message);
 ```
@@ -61,8 +60,7 @@ $k = '0123456789012345';
 $r = '0123456789012345';
 $n = '0123456789012345';
 
-$aeskn = mcrypt_encrypt('rijndael-128', $k, $n, 'cbc',
-    "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+$aeskn = mcrypt_encrypt('rijndael-128', $k, $n, 'ecb');
 
 $authenticator = poly1305_authenticate($r . $aeskn, $message);
 ```
