@@ -122,7 +122,7 @@ ZEND_METHOD(Poly1305, finish) {
 	RETURN_STRINGL((char *)mac, 16, 0);
 }
 
-PHP_FUNCTION(poly1305_authenticate)
+PHP_FUNCTION(auth)
 {
 	unsigned char *key;
 	int key_len;
@@ -147,7 +147,7 @@ PHP_FUNCTION(poly1305_authenticate)
 	RETURN_STRINGL((char *)mac, 16, 0);
 }
 
-PHP_FUNCTION(poly1305_verify)
+PHP_FUNCTION(verify)
 {
 	unsigned char *mac;
 	int mac_len;
@@ -194,7 +194,7 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_poly1305_finish, 0, 0, 1)
 	ZEND_ARG_OBJ_INFO(0, ctx, Poly1305\\Context, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(arginfo_poly1305_authenticate, 0, 0, 2)
+ZEND_BEGIN_ARG_INFO_EX(arginfo_poly1305_auth, 0, 0, 2)
 	ZEND_ARG_INFO(0, key)
 	ZEND_ARG_INFO(0, message)
 ZEND_END_ARG_INFO()
@@ -213,8 +213,8 @@ const zend_function_entry poly1305_methods[] = {
 };
 
 const zend_function_entry poly1305_functions[] = {
-	ZEND_NS_FE(POLY1305_NS, poly1305_authenticate, arginfo_poly1305_authenticate)
-	ZEND_NS_FE(POLY1305_NS, poly1305_verify, arginfo_poly1305_verify)
+	ZEND_NS_FE(POLY1305_NS, auth, arginfo_poly1305_auth)
+	ZEND_NS_FE(POLY1305_NS, verify, arginfo_poly1305_verify)
 	ZEND_FE_END
 };
 
