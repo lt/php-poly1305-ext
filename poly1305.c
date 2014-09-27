@@ -12,6 +12,7 @@
 
 zend_class_entry *poly1305_ce;
 zend_class_entry *poly1305_context_ce;
+zend_class_entry *poly1305_base_ce;
 
 typedef struct _context_object {
 	zend_object std;
@@ -212,6 +213,13 @@ const zend_function_entry poly1305_methods[] = {
 	ZEND_FE_END
 };
 
+const zend_function_entry poly1305_base_methods[] = {
+	ZEND_ABSTRACT_ME(Base, init, arginfo_poly1305_init)
+	ZEND_ABSTRACT_ME(Base, update, arginfo_poly1305_update)
+	ZEND_ABSTRACT_ME(Base, finish, arginfo_poly1305_finish)
+	ZEND_FE_END
+};
+
 const zend_function_entry poly1305_functions[] = {
 	ZEND_NS_FE(POLY1305_NS, auth, arginfo_poly1305_auth)
 	ZEND_NS_FE(POLY1305_NS, verify, arginfo_poly1305_verify)
@@ -229,8 +237,12 @@ ZEND_MINIT_FUNCTION(poly1305)
 {
 	zend_class_entry tmp_ce;
 
+	INIT_NS_CLASS_ENTRY(tmp_ce, POLY1305_NS, "Base", poly1305_base_methods);
+	poly1305_base_ce = zend_register_internal_interface(&tmp_ce TSRMLS_CC);
+
 	INIT_NS_CLASS_ENTRY(tmp_ce, POLY1305_NS, "Poly1305", poly1305_methods);
 	poly1305_ce = zend_register_internal_class(&tmp_ce TSRMLS_CC);
+	zend_class_implements(poly1305_ce TSRMLS_CC, 1, poly1305_base_ce);
 
 	INIT_NS_CLASS_ENTRY(tmp_ce, POLY1305_NS, "Context", NULL);
 	poly1305_context_ce = zend_register_internal_class(&tmp_ce TSRMLS_CC);
