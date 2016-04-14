@@ -14,28 +14,66 @@ zend_class_entry *poly1305_ce;
 zend_class_entry *poly1305_context_ce;
 zend_class_entry *poly1305_base_ce;
 
+static zend_object_handlers context_object_handlers;
+
 typedef struct _context_object {
+#if PHP_VERSION_ID >= 70000
+	poly1305_context ctx;
+	zend_bool initialised;
+	zend_object std;
+#else
 	zend_object std;
 	poly1305_context ctx;
 	zend_bool initialised;
+#endif
 } context_object;
 
 #define IS_CONTEXT(zval) \
 	(Z_TYPE_P(zval) == IS_OBJECT && instanceof_function(Z_OBJCE_P(zval), poly1305_context_ce TSRMLS_CC))
 
-#define FETCH_CONTEXT_ZVAL(ctx, zval)                     \
-if (IS_CONTEXT(zval)) {                                   \
+#if PHP_VERSION_ID >= 70000
+#define FETCH_CONTEXT_ZVAL(ctx, zval) \
+if (IS_CONTEXT(zval)) { \
+	ctx = ((context_object *) ((char *) (Z_OBJ_P(zval)) - XtOffsetOf(context_object, std))); \
+} else {                                                  \
+	ctx = NULL;                                           \
+}
+#else
+#define FETCH_CONTEXT_ZVAL(ctx, zval) \
+if (IS_CONTEXT(zval)) {           \
 	ctx = zend_object_store_get_object((zval) TSRMLS_CC); \
 } else {                                                  \
 	ctx = NULL;                                           \
 }
+#endif
 
+
+#if PHP_VERSION_ID >= 70000
+static void context_free_object_storage(zend_object *std)
+{
+	zend_object_std_dtor(std);
+}
+#else
 static void context_free_object_storage(context_object *ctx TSRMLS_DC)
 {
 	zend_object_std_dtor(&ctx->std TSRMLS_CC);
 	efree(ctx);
 }
+#endif
 
+#if PHP_VERSION_ID >= 70000
+static zend_object *context_create_object(zend_class_entry *ce)
+{
+	context_object *ctx = ecalloc(1, sizeof(context_object) + zend_object_properties_size(ce));
+
+	zend_object_std_init(&ctx->std, ce);
+	object_properties_init(&ctx->std, ce);
+
+	ctx->initialised = 0;
+	ctx->std.handlers = &context_object_handlers;
+	return &ctx->std;
+}
+#else
 static zend_object_value context_create_object(zend_class_entry *ce TSRMLS_DC)
 {
 	zend_object_value retval;
@@ -54,16 +92,28 @@ static zend_object_value context_create_object(zend_class_entry *ce TSRMLS_DC)
 
 	return retval;
 }
+#endif
 
 ZEND_METHOD(Poly1305, init) {
 	zval *ctx_arg;
-	unsigned char *key;
+	char *key;
+#if PHP_VERSION_ID >= 70000
+	size_t key_len;
+#else
 	int key_len;
+#endif
 	context_object *ctx;
 
+#ifndef FAST_ZPP
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zs", &ctx_arg, &key, &key_len) == FAILURE) {
 		return;
 	}
+#else
+	ZEND_PARSE_PARAMETERS_START(2, 2)
+		Z_PARAM_ZVAL(ctx_arg)
+		Z_PARAM_STRING(key, key_len)
+	ZEND_PARSE_PARAMETERS_END();
+#endif
 
 	FETCH_CONTEXT_ZVAL(ctx, ctx_arg);
 
@@ -76,19 +126,29 @@ ZEND_METHOD(Poly1305, init) {
 	}
 
 	poly1305_init(&ctx->ctx, key);
-
 	ctx->initialised = 1;
 }
 
 ZEND_METHOD(Poly1305, update) {
 	zval *ctx_arg;
-	unsigned char *msg;
+	char *msg;
+#if PHP_VERSION_ID >= 70000
+	size_t msg_len;
+#else
 	int msg_len;
+#endif
 	context_object *ctx;
 
+#ifndef FAST_ZPP
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zs", &ctx_arg, &msg, &msg_len) == FAILURE) {
 		return;
 	}
+#else
+	ZEND_PARSE_PARAMETERS_START(2, 2)
+		Z_PARAM_ZVAL(ctx_arg)
+		Z_PARAM_STRING(msg, msg_len)
+	ZEND_PARSE_PARAMETERS_END();
+#endif
 
 	FETCH_CONTEXT_ZVAL(ctx, ctx_arg);
 
@@ -102,11 +162,17 @@ ZEND_METHOD(Poly1305, update) {
 ZEND_METHOD(Poly1305, finish) {
 	zval *ctx_arg;
 	context_object *ctx;
-	unsigned char *mac;
+	char mac[16];
 
+#ifndef FAST_ZPP
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &ctx_arg) == FAILURE) {
 		return;
 	}
+#else
+	ZEND_PARSE_PARAMETERS_START(1, 1)
+		Z_PARAM_ZVAL(ctx_arg)
+	ZEND_PARSE_PARAMETERS_END();
+#endif
 
 	FETCH_CONTEXT_ZVAL(ctx, ctx_arg);
 
@@ -114,54 +180,80 @@ ZEND_METHOD(Poly1305, finish) {
 		zend_throw_exception(spl_ce_InvalidArgumentException, "Invalid Context", 0 TSRMLS_CC);
 	}
 
-	mac = emalloc(17);
 	poly1305_finish(&ctx->ctx, mac);
-	mac[16] = '\0';
-
 	ctx->initialised = 0;
 
-	RETURN_STRINGL((char *)mac, 16, 0);
+#if PHP_VERSION_ID >= 70000
+	RETURN_STRINGL(mac, 16);
+#else
+	RETURN_STRINGL(mac, 16, 1);
+#endif
 }
 
 PHP_FUNCTION(auth)
 {
-	unsigned char *key;
+	char *key;
+	char *message;
+#if PHP_VERSION_ID >= 70000
+	size_t key_len;
+	size_t message_len;
+#else
 	int key_len;
-
-	unsigned char *message;
 	int message_len;
+#endif
+	char mac[16];
 
-	unsigned char *mac;
-
+#ifndef FAST_ZPP
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss", &key, &key_len, &message, &message_len) == FAILURE) {
 		return;
 	}
+#else
+	ZEND_PARSE_PARAMETERS_START(2, 2)
+		Z_PARAM_STRING(key, key_len)
+		Z_PARAM_STRING(message, message_len)
+	ZEND_PARSE_PARAMETERS_END();
+#endif
 
 	if (key_len != 32) {
 		zend_throw_exception(spl_ce_InvalidArgumentException, "Key must be a 32 bytes", 0 TSRMLS_CC);
 	}
 
-	mac = emalloc(17);
 	poly1305_auth(mac, message, message_len, key);
-	mac[16] = '\0';
-
-	RETURN_STRINGL((char *)mac, 16, 0);
+ 
+#if PHP_VERSION_ID >= 70000
+	RETURN_STRINGL(mac, 16);
+#else
+	RETURN_STRINGL(mac, 16, 1);
+#endif
 }
 
 PHP_FUNCTION(verify)
 {
-	unsigned char *mac;
+	char *mac;
+	char *key;
+	char *message;
+#if PHP_VERSION_ID >= 70000
+	size_t mac_len;
+	size_t key_len;
+	size_t message_len;
+#else
 	int mac_len;
-
-	unsigned char *key;
 	int key_len;
-
-	unsigned char *message;
 	int message_len;
+#endif
+	char mac2[16];
 
+#ifndef FAST_ZPP
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sss", &mac, &mac_len, &key, &key_len, &message, &message_len) == FAILURE) {
 		return;
 	}
+#else
+	ZEND_PARSE_PARAMETERS_START(3, 3)
+		Z_PARAM_STRING(mac, mac_len)
+		Z_PARAM_STRING(key, key_len)
+		Z_PARAM_STRING(message, message_len)
+	ZEND_PARSE_PARAMETERS_END();
+#endif
 
 	if (mac_len != 16) {
 		zend_throw_exception(spl_ce_InvalidArgumentException, "MAC must be a 16 bytes", 0 TSRMLS_CC);
@@ -171,7 +263,6 @@ PHP_FUNCTION(verify)
 		zend_throw_exception(spl_ce_InvalidArgumentException, "Key must be a 32 bytes", 0 TSRMLS_CC);
 	}
 
-	unsigned char mac2[17];
 	poly1305_auth(mac2, message, message_len, key);
 
 	if (poly1305_verify(mac, mac2)) {
@@ -213,13 +304,6 @@ const zend_function_entry poly1305_methods[] = {
 	ZEND_FE_END
 };
 
-const zend_function_entry poly1305_base_methods[] = {
-	ZEND_ABSTRACT_ME(Base, init, arginfo_poly1305_init)
-	ZEND_ABSTRACT_ME(Base, update, arginfo_poly1305_update)
-	ZEND_ABSTRACT_ME(Base, finish, arginfo_poly1305_finish)
-	ZEND_FE_END
-};
-
 const zend_function_entry poly1305_functions[] = {
 	ZEND_NS_FE(POLY1305_NS, auth, arginfo_poly1305_auth)
 	ZEND_NS_FE(POLY1305_NS, verify, arginfo_poly1305_verify)
@@ -237,16 +321,18 @@ ZEND_MINIT_FUNCTION(poly1305)
 {
 	zend_class_entry tmp_ce;
 
-	INIT_NS_CLASS_ENTRY(tmp_ce, POLY1305_NS, "Base", poly1305_base_methods);
-	poly1305_base_ce = zend_register_internal_interface(&tmp_ce TSRMLS_CC);
-
 	INIT_NS_CLASS_ENTRY(tmp_ce, POLY1305_NS, "Poly1305", poly1305_methods);
 	poly1305_ce = zend_register_internal_class(&tmp_ce TSRMLS_CC);
-	zend_class_implements(poly1305_ce TSRMLS_CC, 1, poly1305_base_ce);
 
 	INIT_NS_CLASS_ENTRY(tmp_ce, POLY1305_NS, "Context", NULL);
 	poly1305_context_ce = zend_register_internal_class(&tmp_ce TSRMLS_CC);
 	poly1305_context_ce->create_object = context_create_object;
+
+#if PHP_VERSION_ID >= 70000
+	memcpy(&context_object_handlers, &std_object_handlers, sizeof(zend_object_handlers));
+	context_object_handlers.offset = XtOffsetOf(context_object, std);
+	context_object_handlers.free_obj = context_free_object_storage;
+#endif
 
 	return SUCCESS;
 }
